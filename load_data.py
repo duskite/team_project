@@ -119,6 +119,6 @@ def load_population(): # 인구 통계 csv 로드
     if platform.system() == 'Darwin':
         df_population = pd.read_csv('./resource/인구.csv', index_col='지역명').drop(['전국'])
     elif platform.system() == 'Windows':
-        df_population = pd.read_csv('./resource/인구.csv',index_col = '지역명',encoding='cp949').drop(['전국'])
+        df_population = pd.read_csv('./resource/인구.csv',index_col = '지역명').drop(['전국'])
     
     return df_population
