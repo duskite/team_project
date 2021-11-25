@@ -1,7 +1,8 @@
 #-*-coding:utf-8-*-
 import numpy as np
 import pandas as pd
-from load_data import load_nurse, load_hospital_bed
+from load_data import *
+import csv
 
 
 def nurse_diff(quarter_list): # 분기 2가지를 입력받아서 2개의 차이를 구해줌 예시 ['2020-1','2020-2']
@@ -43,3 +44,64 @@ def sort_region(df): # 데이터 프레임 입력 받아서 정해진 index로 �
     sorted_df = df.reindex(index=regions)
 
     return sorted_df
+
+def weight_danger(region_list):
+
+    # 60세 기준 이하 감염자중 사망자 비율 / 이상 감염자중 사망자 비율을 구함
+    # 0.0833 / 3.5106
+    # 1 / 42 로 가중치 잡음
+    undder60 = 1
+    upper60 = 42
+
+    weighted_region = []
+    weighted_region.append(region_list[0] * undder60)
+    weighted_region.append(region_list[1] * upper60)
+
+    return sum(weighted_region)
+
+def percent_covid(df_population, df_covid_api, region):
+
+    return ((int(df_covid_api['확진자 수'].loc[region]) / int(df_population['총인구수'].loc[region])) * 100)
+
+# 잠깐 테스트중
+# df = load_population()
+# df2 = load_covid_api(['2021.11.20'])
+#
+# seoul = [0.7, 0.3]
+# x = [0.3, 0.7]
+# print(weight_danger(seoul) * percent_covid(df, df2, '서울'))
+# print(weight_danger(x) * percent_covid(df, df2, '경기'))
+
+
+def Nomalization():
+    name = pd.read_excel("./resource/file.xlsx", header=3, usecols='B', thousands=',')
+    f = pd.read_excel("./resource/file.xlsx", header=3, usecols='E:J', thousands=',')
+    f2 = pd.read_excel("./resource/file.xlsx", header=3, usecols='K:O', thousands=',')
+    country = pd.read_excel("./resource/file.xlsx", header=3, usecols='C', thousands=',')
+    name_list = name.values
+    c = []
+    for name in name_list:
+        name = str(name)
+        val = name.replace(' ', '').replace('[', '').replace(']', '').replace('\'', '')
+
+        c.append(val)
+    df_sum = list(f.sum(axis=1).values)
+    df2_sum = list(f2.sum(axis=1).values)
+    con = list(country.sum(axis=1).values)
+
+    regions = ['전국','서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기',
+               '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
+    result = dict()
+
+    for i in range(len(con)):
+        val = (round(df_sum[i] / con[i], 3), round(df2_sum[i] / con[i], 3))
+        # str_ = c[i] + str(val)
+        # print(str_)
+
+        result[regions[i]] = val
+        #
+        # result.append(str_)
+
+    del result['전국']  # 전국 우선 필요없어서 지움
+
+    return result # 딕셔너리로 리턴
