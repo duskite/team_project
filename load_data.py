@@ -5,6 +5,16 @@ import requests
 import json
 import xmltodict
 import platform
+import warnings
+
+import requests
+from bs4 import BeautifulSoup
+import re
+from datetime import datetime
+import os
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import csv
 
 
 def load_covid(period=None): # 도별 확진환자수 데이터 로드
@@ -22,6 +32,7 @@ def load_covid(period=None): # 도별 확진환자수 데이터 로드
         return df_covid[period[0]]
     else:
         tmp_df = df_covid.loc[:, period[0]:period[1]]
+        warnings.filterwarnings(action='ignore')
         tmp_df['기간 총합'] = tmp_df.sum(axis=1) # Warning 확인해볼 필요가 있음
         return tmp_df
 
@@ -91,8 +102,10 @@ def load_covid_api(period):  # ['2021.10.11']
 
     period[0] = period[0].replace('.', '')
     period[1] = period[1].replace('.', '')
-
-    key_decoding = 'saEBBtfCp5LEcTo0MsOzAk+F1mVEm/STDsIdGUSMemDDmzhaAT1IH0z8xurajnfPo3zMlnyeJhjiADX2B4s70g=='
+    key_encoding = 'PgdnR4cgw6WwmfyR7rqzzBcJPu3rx3LPtinOu4hHP5B9o2oiJ6alrNDnOvcqdBmUQKgQxFW1WGDnEMPFh%2B87Zw%3D%3D'
+    key_decoding = requests.utils.unquote(key_encoding)
+    
+    #key_decoding = 'saEBBtfCp5LEcTo0MsOzAk+F1mVEm/STDsIdGUSMemDDmzhaAT1IH0z8xurajnfPo3zMlnyeJhjiADX2B4s70g=='
 
     url = 'http://openapi.data.go.kr/openapi/service/rest/Covid19/getCovid19SidoInfStateJson'
     params = {'serviceKey': key_decoding, 'pageNo': '1', 'numOfRows': '1', 'startCreateDt': period[0],
@@ -119,6 +132,77 @@ def load_population(): # 인구 통계 csv 로드
     if platform.system() == 'Darwin':
         df_population = pd.read_csv('./resource/인구.csv', index_col='지역명').drop(['전국'])
     elif platform.system() == 'Windows':
-        df_population = pd.read_csv('./resource/인구.csv',index_col = '지역명',encoding='cp949').drop(['전국'])
+        df_population = pd.read_csv('./resource/인구.csv',index_col = '지역명').drop(['전국'])
     
     return df_population
+
+def load_naver_news(words): # 입력으로 들어온 단어를 검색하여 최대 100개의 뉴스 기사의 타이틀을 가져옴.
+    
+    date = str(datetime.now())
+    date = date[:date.rfind(':')].replace(' ', '_')
+    date = date.replace(':','시') + '분'
+    query =  words
+    news_num = 100 
+    query = query.replace(' ', '+')
+
+
+    news_url = 'https://search.naver.com/search.naver?where=news&sm=tab_jum&query={}'
+    #위는 가져오는 네이버 주소
+
+    req = requests.get(news_url.format(query))
+    soup = BeautifulSoup(req.text, 'html.parser')
+
+
+    news_dict = {}
+    idx = 0
+    cur_page = 1
+
+    while idx < news_num:
+        table = soup.find('ul',{'class' : 'list_news'})
+        li_list = table.find_all('li', {'id': re.compile('sp_nws.*')})
+        area_list = [li.find('div', {'class' : 'news_area'}) for li in li_list]
+        a_list = [area.find('a', {'class' : 'news_tit'}) for area in area_list]
+        for n in a_list[:min(len(a_list), news_num-idx)]:
+            news_dict[idx] = {n.get('title'),
+                      }    #네이버 기사를 가져오는 부분.
+            idx += 1
+        cur_page += 1
+        pages = soup.find('div', {'class' : 'sc_page_inner'})
+        next_page_url = [p for p in pages.find_all('a') if p.text == str(cur_page)][0].get('href')
+        req = requests.get('https://search.naver.com/search.naver' + next_page_url)
+        soup = BeautifulSoup(req.text, 'html.parser')
+    
+    wordcloud = wordcloud = WordCloud(font_path='C:\\Users\\정진영\\AppData\\Local\\Microsoft\\Windows\\Fonts\\BMDOHYEON_ttf.ttf',background_color='white').generate(str(news_dict))
+    #최신 words와 관련된 100개의 기사 제목을 워드 클라우드로 구성하는 부분
+    return wordcloud #해당 클라우드를 리턴.
+
+def Calculate_Critical():
+    name = pd.read_excel("./resource/file.xlsx",header = 3,usecols='B',thousands = ',')
+    f = pd.read_excel("./resource/file.xlsx",header = 3,usecols='E:J',thousands = ',')
+    f2 = pd.read_excel("./resource/file.xlsx",header = 3,usecols='K:O',thousands = ',')
+    country = pd.read_excel("./resource/file.xlsx",header = 3,usecols='C',thousands = ',')
+    name_list = name.values
+    c=[]
+    for name in name_list:
+        name = str(name)
+        val = name.replace(' ','').replace('[','').replace(']','').replace('\'','')
+        
+        c.append(val)
+    df_sum = list(f.sum(axis=1).values)
+    df2_sum = list(f2.sum(axis=1).values)
+    con= list(country.sum(axis=1).values)
+
+    result=[]
+    for i in range(len(con)):
+        a = round(df_sum[i]/con[i],3) * 0.0833
+        b = round(df2_sum[i]/con[i],3) * 3.5106
+        result.append(round(a+b,4))
+
+        
+    # 그래프 그리기
+    plt.figure(figsize=(20,6))
+    plt.bar(np.arange(len(result)), result, color='r')
+    #plt.bar(result)
+    plt.xticks(np.arange(len(result)),labels=c)
+    plt.title("연령대를 고려한 지역별 코로나 취약지수")
+    plt.show()
